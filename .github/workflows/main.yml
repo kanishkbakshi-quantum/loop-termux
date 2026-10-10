@@ -1,7 +1,7 @@
 name: Build Loop for Android (aarch64)
 
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
   push:
     branches: [main]
 
@@ -15,9 +15,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Clone Loop repository
+        shell: bash
         run: |
+          set -euo pipefail
           git clone --depth 1 https://github.com/soketlabs/loop.git /tmp/loop
-          cp -r /tmp/loop/* /tmp/loop/.* . 2>/dev/null || true
+          cp -a /tmp/loop/. .
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -25,18 +27,21 @@ jobs:
           targets: aarch64-linux-android
 
       - name: Install Android NDK
+        shell: bash
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y wget unzip
           wget -q https://dl.google.com/android/repository/android-ndk-r26b-linux.zip
           unzip -q android-ndk-r26b-linux.zip
-          export ANDROID_NDK_HOME=$PWD/android-ndk-r26b
-          echo "ANDROID_NDK_HOME=$PWD/android-ndk-r26b" >> $GITHUB_ENV
-          echo "$PWD/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+          echo "ANDROID_NDK_HOME=$PWD/android-ndk-r26b" >> "$GITHUB_ENV"
+          echo "$PWD/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
 
       - name: Patch workspace Cargo.toml
+        shell: bash
         run: |
-          cat > Cargo.toml << 'CARGO_EOF'
+          set -euo pipefail
+          cat > Cargo.toml <<'CARGO_EOF'
           [workspace]
           resolver = "2"
           members = [
@@ -123,8 +128,10 @@ jobs:
           CARGO_EOF
 
       - name: Patch loop-cli Cargo.toml
+        shell: bash
         run: |
-          cat > crates/loop-cli/Cargo.toml << 'CLI_CARGO_EOF'
+          set -euo pipefail
+          cat > crates/loop-cli/Cargo.toml <<'CLI_CARGO_EOF'
           [package]
           name = "loop-cli"
           version.workspace = true
@@ -193,70 +200,74 @@ jobs:
           CLI_CARGO_EOF
 
       - name: Patch loop-app-core Cargo.toml
+        shell: bash
         run: |
+          set -euo pipefail
           if [ -f crates/loop-app-core/Cargo.toml ]; then
-            cat > crates/loop-app-core/Cargo.toml << 'APP_CORE_CARGO_EOF'
-            [package]
-            name = "loop-app-core"
-            version.workspace = true
-            edition.workspace = true
-            license.workspace = true
-            rust-version.workspace = true
-            description = "Core application logic for Loop"
+            cat > crates/loop-app-core/Cargo.toml <<'APP_CORE_CARGO_EOF'
+          [package]
+          name = "loop-app-core"
+          version.workspace = true
+          edition.workspace = true
+          license.workspace = true
+          rust-version.workspace = true
+          description = "Core application logic for Loop"
 
-            [features]
-            default = []
-            telemetry = ["dep:loop-telemetry"]
+          [features]
+          default = []
+          telemetry = ["dep:loop-telemetry"]
 
-            [dependencies]
-            loop-agent = { workspace = true, features = ["mcp"] }
-            loop-ai = { workspace = true }
-            serde = { workspace = true }
-            serde_json = { workspace = true }
-            serde_yaml = { workspace = true }
-            thiserror = { workspace = true }
-            tokio = { workspace = true }
-            tokio-util = { workspace = true }
-            tokio-stream = { workspace = true }
-            futures = { workspace = true }
-            async-trait = { workspace = true }
-            tracing = { workspace = true }
-            tracing-subscriber = { workspace = true }
-            uuid = { workspace = true }
-            chrono = { workspace = true }
-            clap = { workspace = true }
-            ratatui = { workspace = true }
-            crossterm = { workspace = true }
-            dirs = { workspace = true }
-            anyhow = { workspace = true }
-            pulldown-cmark = { workspace = true }
-            termimad = { workspace = true }
-            ansi-to-tui = { workspace = true }
-            syntect = { workspace = true }
-            two-face = { workspace = true }
-            base64 = { workspace = true }
-            rhai = { workspace = true }
-            rustyline = { workspace = true }
-            unicode-width = { workspace = true }
-            walkdir = { workspace = true }
-            ignore = { workspace = true }
-            tempfile = { workspace = true }
-            regex = { workspace = true }
-            axum = { workspace = true }
-            rmcp = { workspace = true }
-            loop-telemetry = { workspace = true, optional = true }
+          [dependencies]
+          loop-agent = { workspace = true, features = ["mcp"] }
+          loop-ai = { workspace = true }
+          serde = { workspace = true }
+          serde_json = { workspace = true }
+          serde_yaml = { workspace = true }
+          thiserror = { workspace = true }
+          tokio = { workspace = true }
+          tokio-util = { workspace = true }
+          tokio-stream = { workspace = true }
+          futures = { workspace = true }
+          async-trait = { workspace = true }
+          tracing = { workspace = true }
+          tracing-subscriber = { workspace = true }
+          uuid = { workspace = true }
+          chrono = { workspace = true }
+          clap = { workspace = true }
+          ratatui = { workspace = true }
+          crossterm = { workspace = true }
+          dirs = { workspace = true }
+          anyhow = { workspace = true }
+          pulldown-cmark = { workspace = true }
+          termimad = { workspace = true }
+          ansi-to-tui = { workspace = true }
+          syntect = { workspace = true }
+          two-face = { workspace = true }
+          base64 = { workspace = true }
+          rhai = { workspace = true }
+          rustyline = { workspace = true }
+          unicode-width = { workspace = true }
+          walkdir = { workspace = true }
+          ignore = { workspace = true }
+          tempfile = { workspace = true }
+          regex = { workspace = true }
+          axum = { workspace = true }
+          rmcp = { workspace = true }
+          loop-telemetry = { workspace = true, optional = true }
 
-            [dev-dependencies]
-            tempfile = { workspace = true }
-            loop-test-support = { workspace = true }
-            tokio = { workspace = true, features = ["test-util"] }
-            APP_CORE_CARGO_EOF
+          [dev-dependencies]
+          tempfile = { workspace = true }
+          loop-test-support = { workspace = true }
+          tokio = { workspace = true, features = ["test-util"] }
+          APP_CORE_CARGO_EOF
           fi
 
       - name: Create .cargo/config.toml
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p .cargo
-          cat > .cargo/config.toml << 'CARGO_CONFIG_EOF'
+          cat > .cargo/config.toml <<'CARGO_CONFIG_EOF'
           [target.aarch64-linux-android]
           linker = "aarch64-linux-android24-clang"
           ar = "llvm-ar"
@@ -267,33 +278,40 @@ jobs:
           CARGO_CONFIG_EOF
 
       - name: Patch source files
+        shell: bash
         run: |
-          find crates -name "*.rs" -type f -exec grep -l "use arboard" {} \; 2>/dev/null | while read file; do
+          set -euo pipefail
+
+          find crates -name "*.rs" -type f -exec grep -l "use arboard" {} \; 2>/dev/null | while IFS= read -r file; do
             sed -i 's/^use arboard;/#[cfg(not(target_os = "android"))]\nuse arboard;/' "$file"
             sed -i 's/^use arboard::{/#[cfg(not(target_os = "android"))]\nuse arboard::{/' "$file"
           done
 
-          find crates -name "*.rs" -type f -exec grep -l "use portable_pty" {} \; 2>/dev/null | while read file; do
+          find crates -name "*.rs" -type f -exec grep -l "use portable_pty" {} \; 2>/dev/null | while IFS= read -r file; do
             sed -i 's/^use portable_pty;/#[cfg(not(target_os = "android"))]\nuse portable_pty;/' "$file"
             sed -i 's/^use portable_pty::{/#[cfg(not(target_os = "android"))]\nuse portable_pty::{/' "$file"
           done
 
       - name: Build loop-cli
+        shell: bash
         run: |
-          export ANDROID_NDK_HOME=$PWD/android-ndk-r26b
+          set -euo pipefail
+          export ANDROID_NDK_HOME="$PWD/android-ndk-r26b"
           export PATH="$PWD/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="aarch64-linux-android24-clang"
           export CC_aarch64_linux_android="aarch64-linux-android24-clang"
           export CXX_aarch64_linux_android="aarch64-linux-android24-clang++"
           export AR_aarch64_linux_android="llvm-ar"
           export RANLIB_aarch64_linux_android="llvm-ranlib"
-          export OPENSSL_DIR=$PREFIX
-          export OPENSSL_LIB_DIR=$PREFIX/lib
-          export OPENSSL_INCLUDE_DIR=$PREFIX/include
-          export SQLITE3_LIB_DIR=$PREFIX/lib
-          export SQLITE3_INCLUDE_DIR=$PREFIX/include
 
-          cargo build -p loop-cli --release --target aarch64-linux-android -j $(nproc) 2>&1 | tee build.log
+          cargo build -p loop-cli --release --target aarch64-linux-android -j "$(nproc)" 2>&1 | tee build.log
+
+      - name: Verify Android binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f target/aarch64-linux-android/release/loop
+          file target/aarch64-linux-android/release/loop
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
