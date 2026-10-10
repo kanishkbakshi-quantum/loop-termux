@@ -1,0 +1,303 @@
+name: Build Loop for Android (aarch64)
+
+on:
+  workflow_dispatch:  # Manual trigger
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build Loop CLI for Android aarch64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Clone Loop repository
+        run: |
+          git clone --depth 1 https://github.com/soketlabs/loop.git /tmp/loop
+          cp -r /tmp/loop/* /tmp/loop/.* . 2>/dev/null || true
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install Android NDK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget unzip
+          wget -q https://dl.google.com/android/repository/android-ndk-r26b-linux.zip
+          unzip -q android-ndk-r26b-linux.zip
+          export ANDROID_NDK_HOME=$PWD/android-ndk-r26b
+          echo "ANDROID_NDK_HOME=$PWD/android-ndk-r26b" >> $GITHUB_ENV
+          echo "$PWD/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+
+      - name: Patch workspace Cargo.toml
+        run: |
+          cat > Cargo.toml << 'CARGO_EOF'
+          [workspace]
+          resolver = "2"
+          members = [
+              "crates/loop-ai",
+              "crates/loop-orchestration",
+              "crates/loop-mcp",
+              "crates/loop-agent",
+              "crates/loop-app-core",
+              "crates/loop-telemetry",
+              "crates/loop-test-support",
+              "crates/loop-cli"
+          ]
+
+          [workspace.package]
+          version = "0.3.4"
+          edition = "2021"
+          license = "Apache-2.0"
+          repository = "https://github.com/soketlabs/loop"
+          rust-version = "1.85"
+
+          [workspace.dependencies]
+          loop-ai = { path = "crates/loop-ai" }
+          loop-agent = { path = "crates/loop-agent" }
+          loop-app-core = { path = "crates/loop-app-core" }
+          loop-orchestration = { path = "crates/loop-orchestration" }
+          loop-mcp = { path = "crates/loop-mcp" }
+          loop-telemetry = { path = "crates/loop-telemetry" }
+          loop-test-support = { path = "crates/loop-test-support" }
+
+          serde = { version = "1", features = ["derive"] }
+          serde_json = "1"
+          serde_yaml = "0.9"
+          thiserror = "2"
+          tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "process", "io-util", "signal", "net"] }
+          tokio-util = { version = "0.7", default-features = true }
+          futures = "0.3"
+          async-stream = "0.3"
+          async-trait = "0.1"
+          reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+          eventsource-stream = "0.2"
+          bytes = "1"
+          jsonschema = { version = "0.29", default-features = false }
+          uuid = { version = "1", features = ["v7", "serde"] }
+          tracing = "0.1"
+          parking_lot = "0.12"
+          chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+          rusqlite = { version = "0.32", features = ["bundled"] }
+          similar = "2"
+          ignore = "0.4"
+          tempfile = "3"
+          regex = "1"
+          base64 = "0.22"
+          mime_guess = "2"
+          walkdir = "2"
+          clap = { version = "4", features = ["derive", "env"] }
+          ratatui = "0.30"
+          crossterm = { version = "0.28", features = ["event-stream"] }
+          dirs = "6"
+          anyhow = "1"
+          tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+          opentelemetry = { version = "0.33", default-features = false, features = ["trace"] }
+          opentelemetry_sdk = { version = "0.33", default-features = false, features = ["trace"] }
+          opentelemetry-otlp = { version = "0.33", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client", "reqwest-rustls"] }
+          tracing-opentelemetry = { version = "0.34", default-features = false }
+          pulldown-cmark = "0.12"
+          termimad = "0.35"
+          ansi-to-tui = { version = "8", default-features = false }
+          syntect = { version = "5", default-features = false, features = ["parsing", "default-syntaxes", "regex-fancy", "dump-load"] }
+          two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
+          rhai = { version = "1.21", default-features = false, features = ["std", "sync"] }
+          rustyline = "15"
+          unicode-width = "0.2"
+          tokio-stream = { version = "0.1", features = ["sync"] }
+          rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", rev = "3a2ebbc92034f6711e4eac9e93f5de0423be8dfe", default-features = false, features = ["client", "server", "macros", "transport-io", "transport-child-process", "transport-streamable-http-server", "transport-streamable-http-client-reqwest", "reqwest", "auth"] }
+          axum = "0.8"
+          tower = "0.5"
+
+          [profile.release]
+          lto = true
+          codegen-units = 1
+          strip = true
+          opt-level = "z"
+          panic = "abort"
+          CARGO_EOF
+
+      - name: Patch loop-cli Cargo.toml
+        run: |
+          cat > crates/loop-cli/Cargo.toml << 'CLI_CARGO_EOF'
+          [package]
+          name = "loop-cli"
+          version.workspace = true
+          edition.workspace = true
+          license.workspace = true
+          rust-version.workspace = true
+          description = "Interactive coding agent CLI"
+          readme = "README.md"
+
+          [[bin]]
+          name = "loop"
+          path = "src/main.rs"
+
+          [features]
+          default = []
+          orchestration = ["loop-agent/orchestration", "dep:loop-orchestration"]
+          telemetry = ["loop-agent/telemetry", "loop-app-core/telemetry", "dep:loop-telemetry"]
+
+          [dependencies]
+          loop-app-core = { workspace = true }
+          loop-ai = { workspace = true }
+          loop-agent = { workspace = true, features = ["mcp"] }
+          loop-orchestration = { workspace = true, optional = true }
+          loop-mcp = { workspace = true }
+          loop-telemetry = { workspace = true, optional = true }
+          serde = { workspace = true }
+          serde_json = { workspace = true }
+          serde_yaml = { workspace = true }
+          tokio = { workspace = true }
+          tokio-util = { workspace = true }
+          tokio-stream = { workspace = true }
+          futures = { workspace = true }
+          async-trait = { workspace = true }
+          parking_lot = { workspace = true }
+          thiserror = { workspace = true }
+          tracing = { workspace = true }
+          tracing-subscriber = { workspace = true }
+          uuid = { workspace = true }
+          chrono = { workspace = true }
+          clap = { workspace = true }
+          ratatui = { workspace = true }
+          crossterm = { workspace = true }
+          dirs = { workspace = true }
+          anyhow = { workspace = true }
+          pulldown-cmark = { workspace = true }
+          termimad = { workspace = true }
+          ansi-to-tui = { workspace = true }
+          syntect = { workspace = true }
+          two-face = { workspace = true }
+          base64 = { workspace = true }
+          rhai = { workspace = true }
+          rustyline = { workspace = true }
+          unicode-width = { workspace = true }
+          walkdir = { workspace = true }
+          ignore = { workspace = true }
+          tempfile = { workspace = true }
+          regex = { workspace = true }
+          axum = { workspace = true }
+          rmcp = { workspace = true }
+
+          [dev-dependencies]
+          tempfile = { workspace = true }
+          loop-test-support = { workspace = true }
+          opentelemetry_sdk = { workspace = true, features = ["testing"] }
+          tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }
+          CLI_CARGO_EOF
+
+      - name: Patch loop-app-core Cargo.toml
+        run: |
+          if [ -f crates/loop-app-core/Cargo.toml ]; then
+            cat > crates/loop-app-core/Cargo.toml << 'APP_CORE_CARGO_EOF'
+            [package]
+            name = "loop-app-core"
+            version.workspace = true
+            edition.workspace = true
+            license.workspace = true
+            rust-version.workspace = true
+            description = "Core application logic for Loop"
+
+            [features]
+            default = []
+            telemetry = ["dep:loop-telemetry"]
+
+            [dependencies]
+            loop-agent = { workspace = true, features = ["mcp"] }
+            loop-ai = { workspace = true }
+            serde = { workspace = true }
+            serde_json = { workspace = true }
+            serde_yaml = { workspace = true }
+            thiserror = { workspace = true }
+            tokio = { workspace = true }
+            tokio-util = { workspace = true }
+            tokio-stream = { workspace = true }
+            futures = { workspace = true }
+            async-trait = { workspace = true }
+            tracing = { workspace = true }
+            tracing-subscriber = { workspace = true }
+            uuid = { workspace = true }
+            chrono = { workspace = true }
+            clap = { workspace = true }
+            ratatui = { workspace = true }
+            crossterm = { workspace = true }
+            dirs = { workspace = true }
+            anyhow = { workspace = true }
+            pulldown-cmark = { workspace = true }
+            termimad = { workspace = true }
+            ansi-to-tui = { workspace = true }
+            syntect = { workspace = true }
+            two-face = { workspace = true }
+            base64 = { workspace = true }
+            rhai = { workspace = true }
+            rustyline = { workspace = true }
+            unicode-width = { workspace = true }
+            walkdir = { workspace = true }
+            ignore = { workspace = true }
+            tempfile = { workspace = true }
+            regex = { workspace = true }
+            axum = { workspace = true }
+            rmcp = { workspace = true }
+            loop-telemetry = { workspace = true, optional = true }
+
+            [dev-dependencies]
+            tempfile = { workspace = true }
+            loop-test-support = { workspace = true }
+            tokio = { workspace = true, features = ["test-util"] }
+            APP_CORE_CARGO_EOF
+          fi
+
+      - name: Create .cargo/config.toml
+        run: |
+          mkdir -p .cargo
+          cat > .cargo/config.toml << 'CARGO_CONFIG_EOF'
+          [target.aarch64-linux-android]
+          linker = "aarch64-linux-android24-clang"
+          ar = "llvm-ar"
+          ranlib = "llvm-ranlib"
+
+          [build]
+          target = "aarch64-linux-android"
+          CARGO_CONFIG_EOF
+
+      - name: Patch source files
+        run: |
+          find crates -name "*.rs" -type f -exec grep -l "use arboard" {} \; 2>/dev/null | while read file; do
+            sed -i 's/^use arboard;/#[cfg(not(target_os = "android"))]\nuse arboard;/' "$file"
+            sed -i 's/^use arboard::{/#[cfg(not(target_os = "android"))]\nuse arboard::{/' "$file"
+          done
+
+          find crates -name "*.rs" -type f -exec grep -l "use portable_pty" {} \; 2>/dev/null | while read file; do
+            sed -i 's/^use portable_pty;/#[cfg(not(target_os = "android"))]\nuse portable_pty;/' "$file"
+            sed -i 's/^use portable_pty::{/#[cfg(not(target_os = "android"))]\nuse portable_pty::{/' "$file"
+          done
+
+      - name: Build loop-cli
+        run: |
+          export ANDROID_NDK_HOME=$PWD/android-ndk-r26b
+          export PATH="$PWD/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="aarch64-linux-android24-clang"
+          export CC_aarch64_linux_android="aarch64-linux-android24-clang"
+          export CXX_aarch64_linux_android="aarch64-linux-android24-clang++"
+          export AR_aarch64_linux_android="llvm-ar"
+          export RANLIB_aarch64_linux_android="llvm-ranlib"
+          export OPENSSL_DIR=$PREFIX
+          export OPENSSL_LIB_DIR=$PREFIX/lib
+          export OPENSSL_INCLUDE_DIR=$PREFIX/include
+          export SQLITE3_LIB_DIR=$PREFIX/lib
+          export SQLITE3_INCLUDE_DIR=$PREFIX/include
+
+          cargo build -p loop-cli --release --target aarch64-linux-android -j $(nproc) 2>&1 | tee build.log
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-android-aarch64
+          path: target/aarch64-linux-android/release/loop
+          retention-days: 7
